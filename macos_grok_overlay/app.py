@@ -21,6 +21,7 @@ from .constants import (
     STATUS_ITEM_CONTEXT,
     WEBSITE,
     LAUNCHER_TRIGGER,
+    INTERNAL_HOSTS,
 )
 from .launcher import (
     install_startup,
@@ -94,6 +95,9 @@ class AppDelegate(NSObject):
         # Set a custom user agent
         safari_user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
         self.webview.setCustomUserAgent_(safari_user_agent)
+        # Attach delegates for navigation policy (external links) and UI (popups/target=_blank)
+        self.webview.setNavigationDelegate_(self)
+        self.webview.setUIDelegate_(self)
         # Make window transparent so that the corners can be rounded
         self.window.setOpaque_(False)
         self.window.setBackgroundColor_(NSColor.clearColor())
@@ -415,6 +419,26 @@ class AppDelegate(NSObject):
                 r, g, b = [val / 255.0 for val in rgb_values[:3]]
                 color = NSColor.colorWithCalibratedRed_green_blue_alpha_(r, g, b, 1.0)
                 self.drag_area.setBackgroundColor_(color)
+
+    # WKNavigationDelegate: open non-whitelisted links (LinkActivated clicks) in default browser.
+    # Internal hosts (SPA nav like New chat) continue inside the overlay.
+    def webView_decidePolicyForNavigationAction_decisionHandler_(self, webView, navigationAction, decisionHandler):
+        if navigationAction.navigationType() == WKNavigationTypeLinkActivated:
+            url = navigationAction.request().URL()
+            if url is not None:
+                host = (url.host() or "").lower()
+                if host not in INTERNAL_HOSTS:
+                    NSWorkspace.sharedWorkspace().openURL_(url)
+                    decisionHandler(WKNavigationActionPolicyCancel)
+                    return
+        decisionHandler(WKNavigationActionPolicyAllow)
+
+    # WKUIDelegate: catch target=_blank, window.open(), etc. and open in external browser instead of creating nested WKWebView.
+    def webView_createWebViewWithConfiguration_forNavigationAction_windowFeatures_(self, webView, configuration, navigationAction, windowFeatures):
+        url = navigationAction.request().URL()
+        if url:
+            NSWorkspace.sharedWorkspace().openURL_(url)
+        return None
 
     # Logic for checking what color the logo in the status bar should be, and setting appropriate logo.
     def updateStatusItemImage(self):

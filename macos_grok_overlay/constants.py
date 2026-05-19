@@ -28,3 +28,7 @@ LAUNCHER_TRIGGER = {
     "flags": kCGEventFlagMaskAlternate,
     "key": 49
 }
+
+# Hosts that should navigate inside the overlay (Grok chat experience).
+# All other hosts (clicked links, OAuth, external resources) open in the user's default browser.
+INTERNAL_HOSTS = {"grok.com", "grok.x.ai", "x.ai"}
