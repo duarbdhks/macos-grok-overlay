@@ -10,6 +10,34 @@
   const halfPage = () => Math.max(100, window.innerHeight / 2);
   const HINT_CHARS = 'asdfghjkl';
 
+  // Korean Dubeolsik (2-set) jamo → Latin base key, for IME/layout independence.
+  // Covers HINT_CHARS + navigation keys (g/j/k/h/l/d/u) + G/H/L via shiftKey.
+  const KOREAN_TO_LATIN = {
+    'ㅁ': 'a', 'ㄴ': 's', 'ㅇ': 'd', 'ㄹ': 'f', 'ㅎ': 'g',
+    'ㅗ': 'h', 'ㅓ': 'j', 'ㅏ': 'k', 'ㅣ': 'l',
+    'ㅕ': 'u', 'ㅑ': 'i', 'ㅐ': 'o', 'ㅔ': 'p',
+    'ㅂ': 'q', 'ㅈ': 'w', 'ㄷ': 'e', 'ㄱ': 'r', 'ㅅ': 't', 'ㅛ': 'y',
+    'ㅋ': 'z', 'ㅌ': 'x', 'ㅊ': 'c', 'ㅍ': 'v', 'ㅠ': 'b', 'ㅜ': 'n', 'ㅡ': 'm'
+  };
+
+  function getBaseKey(e) {
+    // Prefer e.code (physical, e.g. "KeyF") — fully IME/layout-proof.
+    if (e.code && e.code.startsWith('Key')) {
+      const letter = e.code.slice(3).toLowerCase();
+      if (/^[a-z]$/.test(letter)) {
+        return e.shiftKey ? letter.toUpperCase() : letter;
+      }
+      return letter;
+    }
+    // Fallback: map produced char (Korean jamo) then respect shiftKey for G/H/L etc.
+    let k = (e.key || '').toLowerCase();
+    const mapped = KOREAN_TO_LATIN[k] || k;
+    if (e.shiftKey && /^[a-z]$/.test(mapped)) {
+      return mapped.toUpperCase();
+    }
+    return mapped;
+  }
+
   let lastG = 0;
   let hintMode = false;
   let hintMap = null;
@@ -166,7 +194,8 @@
       updateHintFilter();
       return;
     }
-    const ch = e.key.length === 1 ? e.key.toLowerCase() : '';
+    const base = getBaseKey(e);
+    const ch = base.length === 1 ? base.toLowerCase() : '';
     if (!ch || !HINT_CHARS.includes(ch)) return;
     hintBuffer += ch;
     if (hintMap.has(hintBuffer)) {
@@ -191,6 +220,14 @@
     // Never interfere with modifier combos (let app shortcuts pass)
     if (e.ctrlKey || e.metaKey || e.altKey) {
       if (hintMode) clearHints();
+      // Cmd+W / Cmd+ㅈ → native hideWindow (e.code is IME/layout-proof)
+      if (e.metaKey && !e.altKey && !e.ctrlKey && e.code === 'KeyW') {
+        try {
+          window.webkit?.messageHandlers?.hideHandler?.postMessage('hide');
+        } catch (err) {}
+        e.preventDefault();
+        e.stopPropagation();
+      }
       return;
     }
 
@@ -209,8 +246,9 @@
     }
 
     const key = e.key;
+    const base = getBaseKey(e);
 
-    if (key === 'g') {
+    if (base === 'g') {
       const now = Date.now();
       if (now - lastG < 500) {
         window.scrollTo(0, 0);
@@ -222,7 +260,7 @@
       return;
     }
 
-    if (key === 'f') {
+    if (base === 'f') {
       e.preventDefault();
       showHints();
       return;
@@ -233,7 +271,7 @@
       return;
     }
 
-    const fn = handlers[key];
+    const fn = handlers[base];
     if (fn) {
       fn();
       e.preventDefault();

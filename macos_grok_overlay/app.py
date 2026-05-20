@@ -131,6 +131,7 @@ class AppDelegate(NSObject):
         configuration = self.webview.configuration()
         user_content_controller = configuration.userContentController()
         user_content_controller.addScriptMessageHandler_name_(self, "backgroundColorHandler")
+        user_content_controller.addScriptMessageHandler_name_(self, "hideHandler")
         # Inject JavaScript to monitor background color changes
         script = """
             (function(){
@@ -239,6 +240,11 @@ class AppDelegate(NSObject):
         self.local_mouse_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
             NSEventMaskLeftMouseDown,  # Monitor left mouse-down events
             self.handleLocalMouseEvent  # Handler method
+        )
+        # Add local key event monitor for reliable Cmd shortcuts (even when WKWebView is first responder)
+        self.local_key_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(
+            NSEventMaskKeyDown,
+            self.handleLocalKeyEvent
         )
         # Create the event tap for key-down events
         tap = CGEventTapCreate(
@@ -350,6 +356,23 @@ class AppDelegate(NSObject):
     def updateTriggerMenu(self, key_string=""):
         self.trigger_item.setTitle_("    " + key_string)
 
+    # Return base key for Cmd/Ctrl shortcuts. Prefers hardware keyCode (IME-proof);
+    # falls back to produced char and our explicit Korean jamo map.
+    def _normalized_key(self, event, key):
+        kc = event.keyCode()
+        # complete map for all currently handled letters + '[' (keycode primary)
+        m = {0: 'a', 8: 'c', 7: 'x', 9: 'v', 4: 'h', 12: 'q', 13: 'w', 33: '['}
+        if kc in m:
+            return m[kc]
+        k = (key or '').lower()
+        if k in ('a', 'c', 'x', 'v', 'h', 'q', 'w', '['):
+            return k
+        # explicit Korean jamo fallbacks for our shortcuts (defense-in-depth)
+        j = {'ㅁ': 'a', 'ㅊ': 'c', 'ㅌ': 'x', 'ㅍ': 'v', 'ㅗ': 'h', 'ㅂ': 'q', 'ㅈ': 'w'}
+        if k in j:
+            return j[k]
+        return k
+
     # For capturing key commands while the key window (in focus).
     def keyDown_(self, event):
         modifiers = event.modifierFlags()
@@ -360,29 +383,33 @@ class AppDelegate(NSObject):
         key = event.charactersIgnoringModifiers()
         # Command (NOT alt)
         if (key_command or key_control) and (not key_alt):
+            base = self._normalized_key(event, key)
             # Select all
-            if key == 'a':
+            if base == 'a':
                 self.window.firstResponder().selectAll_(None)
             # Copy
-            elif key == 'c':
+            elif base == 'c':
                 self.window.firstResponder().copy_(None)
             # Cut
-            elif key == 'x':
+            elif base == 'x':
                 self.window.firstResponder().cut_(None)
             # Paste
-            elif key == 'v':
+            elif base == 'v':
                 self.window.firstResponder().paste_(None)
             # Hide
-            elif key == 'h':
+            elif base == 'h':
+                self.hideWindow_(None)
+            # Hide (Cmd+W; folded into helper; keycode covers Korean 'ㅈ')
+            elif base == 'w':
                 self.hideWindow_(None)
             # Quit
-            elif key == 'q':
+            elif base == 'q':
                 NSApp.terminate_(None)
             # Back (webview history)
-            elif key == '[':
+            elif base == '[':
                 self.goBack_(None)
             # # Undo (causes crash for some reason)
-            # elif key == 'z':
+            # elif base == 'z':
             #     self.window.firstResponder().undo_(None)
 
     # Handler for capturing a click-and-drag event when not already the key window.
@@ -402,6 +429,32 @@ class AppDelegate(NSObject):
                 return None  # Consume the event
         return event  # Pass unhandled events along
 
+    # Handler for Cmd key shortcuts (W/ㅈ to hide). Uses local monitor so it works
+    # even when the WKWebView is the first responder and would otherwise swallow the event.
+    @objc.python_method
+    def handleLocalKeyEvent(self, event):
+        # Only care when our window is the active key window
+        if not self.window.isKeyWindow():
+            return event
+
+        modifiers = event.modifierFlags()
+        has_cmd = modifiers & NSEventModifierFlagCommand
+        has_alt = modifiers & NSEventModifierFlagOption
+
+        if has_cmd and not has_alt:
+            key = event.charactersIgnoringModifiers()
+            kc = event.keyCode()
+            base = self._normalized_key(event, key)
+
+            # Strong debug so we can see exactly what's happening
+            print(f"LOCAL_KEY: kc={kc} char={key!r} base={base!r} isKey={self.window.isKeyWindow()}", flush=True)
+
+            if base == 'w':
+                self.hideWindow_(None)
+                return None  # consume so WebKit doesn't see it
+
+        return event
+
     # Handler for when the window resizes (adjusts the drag area).
     def windowDidResize_(self, notification):
         bounds = self.window.contentView().bounds()
@@ -411,6 +464,9 @@ class AppDelegate(NSObject):
 
     # Handler for setting the background color based on the web page background color.
     def userContentController_didReceiveScriptMessage_(self, userContentController, message):
+        if message.name() == "hideHandler":
+            self.hideWindow_(None)
+            return
         if message.name() == "backgroundColorHandler":
             bg_color_str = message.body()
             # Convert CSS color to NSColor (assuming RGB for simplicity)

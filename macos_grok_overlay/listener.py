@@ -20,6 +20,7 @@ from Quartz import (
     CGEventKeyboardGetUnicodeString,
     CGEventGetFlags,
     CGEventGetIntegerValueField,
+    kCGEventFlagMaskCommand,
     kCGEventKeyDown,
     kCGKeyboardEventKeycode,
 )
@@ -205,7 +206,15 @@ def global_show_hide_listener(app):
     def listener(proxy, event_type, event, refcon):
         if event_type == kCGEventKeyDown:
             keycode = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
-            flags = CGEventGetFlags(event) & LAUNCHER_TRIGGER_MASK
+            raw_flags = CGEventGetFlags(event)
+            flags = raw_flags & LAUNCHER_TRIGGER_MASK
+
+            # Cmd + physical W (keycode 13) → hide (Korean 'ㅈ' support via keycode)
+            if (raw_flags & kCGEventFlagMaskCommand) and keycode == 13:
+                if getattr(app, 'window', None) and app.window.isKeyWindow():
+                    app.hideWindow_(None)
+                    return None
+
             if (None in set(LAUNCHER_TRIGGER.values())) and handle_new_trigger:
                 print("  received keys, establishing new trigger..", flush=True)
                 handle_new_trigger(event, flags, keycode)
