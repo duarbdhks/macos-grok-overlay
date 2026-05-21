@@ -75,7 +75,6 @@ class AppDelegate(NSObject):
             NSBackingStoreBuffered,
             False
         )
-        self.window.setLevel_(NSFloatingWindowLevel)
         self.window.setCollectionBehavior_(
             NSWindowCollectionBehaviorCanJoinAllSpaces
             | NSWindowCollectionBehaviorStationary
@@ -311,15 +310,6 @@ class AppDelegate(NSObject):
     def goBack_(self, sender):
         if self.webview.canGoBack():
             self.webview.goBack()
-
-    # Auto-hide the overlay when the window loses key focus (click outside).
-    # Skipped while a custom-trigger capture overlay is active to avoid dismissing it.
-    def windowDidResignKey_(self, notification):
-        from .listener import handle_new_trigger
-        if handle_new_trigger is not None:
-            return
-        if self.window.isVisible():
-            self.hideWindow_(None)
 
     # Go to the default landing website for the overlay (in case accidentally navigated away).
     def goToWebsite_(self, sender):
