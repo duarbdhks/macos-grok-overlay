@@ -168,6 +168,18 @@ class AppDelegate(NSObject):
             user_content_controller.addUserScript_(_vim_script)
         except Exception as _e:
             print(f"Failed to inject Vimium shim: {_e}", flush=True)
+
+        # Inject Cmd+F find-in-page shim (separate from vimium for maintainability)
+        try:
+            _pkg_dir = os.path.dirname(os.path.abspath(__file__))
+            with open(os.path.join(_pkg_dir, "find_shim.js"), "r") as _ff:
+                _find_src = _ff.read()
+            _find_script = WKUserScript.alloc().initWithSource_injectionTime_forMainFrameOnly_(
+                _find_src, WKUserScriptInjectionTimeAtDocumentEnd, False
+            )
+            user_content_controller.addUserScript_(_find_script)
+        except Exception as _e:
+            print(f"Failed to inject Find shim: {_e}", flush=True)
         # Create status bar item with logo
         self.status_item = NSStatusBar.systemStatusBar().statusItemWithLength_(NSSquareStatusItemLength)
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -408,6 +420,12 @@ class AppDelegate(NSObject):
             # Back (webview history)
             elif base == '[':
                 self.goBack_(None)
+            # Cmd+F → custom find-in-page (JS handles the UI)
+            elif base == 'f':
+                self.webview.evaluateJavaScript_completionHandler_(
+                    "window.__grokFind && window.__grokFind.open()",
+                    None
+                )
             # # Undo (causes crash for some reason)
             # elif base == 'z':
             #     self.window.firstResponder().undo_(None)
@@ -443,15 +461,19 @@ class AppDelegate(NSObject):
 
         if has_cmd and not has_alt:
             key = event.charactersIgnoringModifiers()
-            kc = event.keyCode()
             base = self._normalized_key(event, key)
-
-            # Strong debug so we can see exactly what's happening
-            print(f"LOCAL_KEY: kc={kc} char={key!r} base={base!r} isKey={self.window.isKeyWindow()}", flush=True)
 
             if base == 'w':
                 self.hideWindow_(None)
                 return None  # consume so WebKit doesn't see it
+
+            # Cmd+F → open custom in-page find bar (everything handled in JS)
+            if base == 'f':
+                self.webview.evaluateJavaScript_completionHandler_(
+                    "window.__grokFind && window.__grokFind.open()",
+                    None
+                )
+                return None  # fully consume so browser find never triggers
 
         return event
 

@@ -217,6 +217,12 @@
   }
 
   document.addEventListener('keydown', function (e) {
+    // Explicit coordination with find_shim: when Cmd+F find bar is active,
+    // let the find bar own all non-modifier keys (Esc, arrows, letters for search).
+    if (window.__grokFindActive) {
+      return;
+    }
+
     // Never interfere with modifier combos (let app shortcuts pass)
     if (e.ctrlKey || e.metaKey || e.altKey) {
       if (hintMode) clearHints();

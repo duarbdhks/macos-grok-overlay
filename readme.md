@@ -79,6 +79,7 @@ In addition to the global `Option + Space` toggle, the embedded `grok.com` web v
 | `Esc` | Cancel hints, blur the active input |
 | `H` / `L` | Web view history back / forward |
 | `⌘ + [` | Web view back (also available as "Back" in the menu bar) |
+| `⌘ + F` | Open in-page find bar (search current conversation, smooth navigation) |
 
 ## Modifications from upstream
 
