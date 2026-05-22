@@ -284,25 +284,26 @@ class AppDelegate(NSObject):
     # Logic to show the overlay, make it the key window, and focus on the typing area.
     def showWindow_(self, sender):
         self.window.setAlphaValue_(0.0)
-        self.window.makeKeyAndOrderFront_(None)
+        self.window.orderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
         def _fadeIn(ctx):
             ctx.setDuration_(0.18)
             self.window.animator().setAlphaValue_(1.0)
-        NSAnimationContext.runAnimationGroup_completionHandler_(_fadeIn, None)
-        # Execute the JavaScript to focus the textarea in the WKWebView
-        self.webview.evaluateJavaScript_completionHandler_(
-            "[...document.querySelectorAll('textarea')].sort((a,b)=>a.contains(b)?-1:b.contains(a)?1:0).pop()?.focus();",
-            None
-        )
+        def _afterFadeIn():
+            self.window.makeKeyWindow()
+            self.webview.evaluateJavaScript_completionHandler_(
+                "[...document.querySelectorAll('textarea')].sort((a,b)=>a.contains(b)?-1:b.contains(a)?1:0).pop()?.focus();",
+                None
+            )
+        NSAnimationContext.runAnimationGroup_completionHandler_(_fadeIn, _afterFadeIn)
 
     # Hide the overlay and allow focus to return to the next visible application.
     def hideWindow_(self, sender):
         def _fadeOut(ctx):
-            ctx.setDuration_(0.18)
+            ctx.setDuration_(0.15)
             self.window.animator().setAlphaValue_(0.0)
         def _done():
-            NSApp.hide_(None)
+            self.window.orderOut_(None)
             self.window.setAlphaValue_(1.0)
         NSAnimationContext.runAnimationGroup_completionHandler_(_fadeOut, _done)
     
