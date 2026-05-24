@@ -209,6 +209,9 @@ class AppDelegate(NSObject):
         back_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Back", "goBack:", "[")
         back_item.setTarget_(self)
         menu.addItem_(back_item)
+        reload_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Reload", "reloadWebView:", "r")
+        reload_item.setTarget_(self)
+        menu.addItem_(reload_item)
         clear_data_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Clear Web Cache", "clearWebViewData:", "")
         clear_data_item.setTarget_(self)
         menu.addItem_(clear_data_item)
@@ -312,6 +315,11 @@ class AppDelegate(NSObject):
         if self.webview.canGoBack():
             self.webview.goBack()
 
+    # Reload the webview (menu action for Cmd+R; soft reload by default).
+    # The keyboard handlers (keyDown_ + local monitor) own the Shift variant for hard reload.
+    def reloadWebView_(self, sender):
+        self.webview.reload()
+
     # Go to the default landing website for the overlay (in case accidentally navigated away).
     def goToWebsite_(self, sender):
         url = NSURL.URLWithString_(WEBSITE)
@@ -363,15 +371,15 @@ class AppDelegate(NSObject):
     # falls back to produced char and our explicit Korean jamo map.
     def _normalized_key(self, event, key):
         kc = event.keyCode()
-        # complete map for all currently handled letters + '[' (keycode primary)
-        m = {0: 'a', 8: 'c', 7: 'x', 9: 'v', 4: 'h', 12: 'q', 13: 'w', 33: '['}
+        # complete map for all currently handled letters + '[' + 'r' (keycode primary; 15 = R)
+        m = {0: 'a', 8: 'c', 7: 'x', 9: 'v', 4: 'h', 12: 'q', 13: 'w', 33: '[', 15: 'r'}
         if kc in m:
             return m[kc]
         k = (key or '').lower()
-        if k in ('a', 'c', 'x', 'v', 'h', 'q', 'w', '['):
+        if k in ('a', 'c', 'x', 'v', 'h', 'q', 'w', '[', 'r'):
             return k
         # explicit Korean jamo fallbacks for our shortcuts (defense-in-depth)
-        j = {'ㅁ': 'a', 'ㅊ': 'c', 'ㅌ': 'x', 'ㅍ': 'v', 'ㅗ': 'h', 'ㅂ': 'q', 'ㅈ': 'w'}
+        j = {'ㅁ': 'a', 'ㅊ': 'c', 'ㅌ': 'x', 'ㅍ': 'v', 'ㅗ': 'h', 'ㅂ': 'q', 'ㅈ': 'w', 'ㄱ': 'r'}
         if k in j:
             return j[k]
         return k
@@ -417,6 +425,13 @@ class AppDelegate(NSObject):
                     "window.__grokFind && window.__grokFind.open()",
                     None
                 )
+            # Reload (Cmd+R soft / Cmd+Shift+R hard-from-origin).
+            # Mirrors browser default but provides explicit IME-proof path (keyDown_ path).
+            elif base == 'r':
+                if key_shift:
+                    self.webview.reloadFromOrigin()
+                else:
+                    self.webview.reload()
             # # Undo (causes crash for some reason)
             # elif base == 'z':
             #     self.window.firstResponder().undo_(None)
@@ -449,6 +464,7 @@ class AppDelegate(NSObject):
         modifiers = event.modifierFlags()
         has_cmd = modifiers & NSEventModifierFlagCommand
         has_alt = modifiers & NSEventModifierFlagOption
+        has_shift = modifiers & NSEventModifierFlagShift
 
         if has_cmd and not has_alt:
             key = event.charactersIgnoringModifiers()
@@ -465,6 +481,15 @@ class AppDelegate(NSObject):
                     None
                 )
                 return None  # fully consume so browser find never triggers
+
+            # Cmd+R (soft) / Cmd+Shift+R (hard, bypass cache) → explicit reload.
+            # Critical for focused app state (current keyDown_ delegation swallows it).
+            if base == 'r':
+                if has_shift:
+                    self.webview.reloadFromOrigin()
+                else:
+                    self.webview.reload()
+                return None  # consume (like W/F) so it never reaches WebKit/page
 
         return event
 
